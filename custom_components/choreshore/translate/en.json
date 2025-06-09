@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ChoreShore Setup",
+        "description": "Enter your ChoreShore household details",
+        "data": {
+          "household_id": "Household ID",
+          "user_id": "User ID",
+          "update_interval": "Update interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to ChoreShore",
+      "invalid_auth": "Invalid user credentials",
+      "invalid_household": "User is not part of the specified household",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "ChoreShore is already configured"
+    }
+  }
+}
