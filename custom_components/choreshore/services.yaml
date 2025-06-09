@@ -1,0 +1,32 @@
+
+complete_task:
+  name: Complete Task
+  description: Mark a ChoreShore task as completed
+  fields:
+    task_id:
+      name: Task ID
+      description: The unique identifier of the task to complete
+      required: true
+      selector:
+        text:
+
+skip_task:
+  name: Skip Task
+  description: Skip a ChoreShore task with optional reason
+  fields:
+    task_id:
+      name: Task ID
+      description: The unique identifier of the task to skip
+      required: true
+      selector:
+        text:
+    reason:
+      name: Skip Reason
+      description: Optional reason for skipping the task
+      required: false
+      selector:
+        text:
+
+refresh_data:
+  name: Refresh Data
+  description: Force refresh of ChoreShore data from the server
