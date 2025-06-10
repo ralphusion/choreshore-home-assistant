@@ -71,12 +71,11 @@ class ChoreShoreTotalTasksSensor(ChoreShoreBaseSensor):
     def native_value(self) -> Optional[int]:
         """Return the state of the sensor."""
         if not self.coordinator.data:
-            _LOGGER.debug("Total tasks sensor: no coordinator data")
             return 0
         
         analytics = self.coordinator.data.get("analytics", {})
         value = analytics.get("total_tasks", 0)
-        _LOGGER.debug("Total tasks sensor value: %s (from analytics: %s)", value, analytics)
+        _LOGGER.debug("Total tasks sensor returning: %s", value)
         return value
 
 class ChoreShoreCompletedTasksSensor(ChoreShoreBaseSensor):
@@ -91,12 +90,11 @@ class ChoreShoreCompletedTasksSensor(ChoreShoreBaseSensor):
     def native_value(self) -> Optional[int]:
         """Return the state of the sensor."""
         if not self.coordinator.data:
-            _LOGGER.debug("Completed tasks sensor: no coordinator data")
             return 0
         
         analytics = self.coordinator.data.get("analytics", {})
         value = analytics.get("completed_tasks", 0)
-        _LOGGER.debug("Completed tasks sensor value: %s (from analytics: %s)", value, analytics)
+        _LOGGER.debug("Completed tasks sensor returning: %s", value)
         return value
 
 class ChoreShoreOverdueTasksSensor(ChoreShoreBaseSensor):
@@ -111,12 +109,11 @@ class ChoreShoreOverdueTasksSensor(ChoreShoreBaseSensor):
     def native_value(self) -> Optional[int]:
         """Return the state of the sensor."""
         if not self.coordinator.data:
-            _LOGGER.debug("Overdue tasks sensor: no coordinator data")
             return 0
         
         analytics = self.coordinator.data.get("analytics", {})
         value = analytics.get("overdue_tasks", 0)
-        _LOGGER.debug("Overdue tasks sensor value: %s (from analytics: %s)", value, analytics)
+        _LOGGER.debug("Overdue tasks sensor returning: %s", value)
         return value
 
 class ChoreShorePendingTasksSensor(ChoreShoreBaseSensor):
@@ -131,12 +128,11 @@ class ChoreShorePendingTasksSensor(ChoreShoreBaseSensor):
     def native_value(self) -> Optional[int]:
         """Return the state of the sensor."""
         if not self.coordinator.data:
-            _LOGGER.debug("Pending tasks sensor: no coordinator data")
             return 0
         
         analytics = self.coordinator.data.get("analytics", {})
         value = analytics.get("pending_tasks", 0)
-        _LOGGER.debug("Pending tasks sensor value: %s (from analytics: %s)", value, analytics)
+        _LOGGER.debug("Pending tasks sensor returning: %s", value)
         return value
 
 class ChoreShoreCompletionRateSensor(ChoreShoreBaseSensor):
@@ -152,12 +148,11 @@ class ChoreShoreCompletionRateSensor(ChoreShoreBaseSensor):
     def native_value(self) -> Optional[float]:
         """Return the state of the sensor."""
         if not self.coordinator.data:
-            _LOGGER.debug("Completion rate sensor: no coordinator data")
             return 0
         
         analytics = self.coordinator.data.get("analytics", {})
         value = analytics.get("completion_rate", 0)
-        _LOGGER.debug("Completion rate sensor value: %s (from analytics: %s)", value, analytics)
+        _LOGGER.debug("Completion rate sensor returning: %s", value)
         return value
 
 class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
@@ -189,7 +184,6 @@ class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
     def native_value(self) -> Optional[int]:
         """Return the number of completed tasks for this member."""
         if not self.coordinator.data or "chore_instances" not in self.coordinator.data:
-            _LOGGER.debug("Member %s tasks sensor: no coordinator data", self._member_name)
             return 0
 
         chore_instances = self.coordinator.data["chore_instances"]
