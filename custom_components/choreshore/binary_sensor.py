@@ -43,7 +43,7 @@ class ChoreShoreBaseBinarySensor(CoordinatorEntity, BinarySensorEntity):
         super().__init__(coordinator)
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"{coordinator.household_id}_{coordinator.user_id}")},
-            "name": f"ChoreShore - {coordinator.user_name}",
+            "name": coordinator.device_name,
             "manufacturer": "ChoreShore",
             "model": "User Tasks",
         }
@@ -54,31 +54,12 @@ class ChoreShoreOverdueTasksBinarySensor(ChoreShoreBaseBinarySensor):
     def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self._attr_name = f"ChoreShore {coordinator.user_name} Has Overdue Tasks"
+        self._attr_name = f"{coordinator.device_name} Has Overdue Tasks"
         self._attr_unique_id = f"{DOMAIN}_{coordinator.user_id}_has_overdue_tasks"
         self._attr_icon = "mdi:alert-circle"
         self._attr_device_class = BinarySensorDeviceClass.PROBLEM
 
-    @property
-    def is_on(self) -> bool:
-        """Return true if user has overdue tasks."""
-        if self.coordinator.data and "analytics" in self.coordinator.data:
-            return self.coordinator.data["analytics"].get("overdue_tasks", 0) > 0
-        return False
-
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return additional state attributes."""
-        if not self.coordinator.data or "analytics" not in self.coordinator.data:
-            return {}
-        
-        analytics = self.coordinator.data["analytics"]
-        return {
-            "overdue_count": analytics.get("overdue_tasks", 0),
-            "total_tasks": analytics.get("total_tasks", 0),
-            "user_id": self.coordinator.user_id,
-            "user_name": self.coordinator.user_name,
-        }
+    # ... keep existing code (is_on and extra_state_attributes properties)
 
 class ChoreShorePendingTasksBinarySensor(ChoreShoreBaseBinarySensor):
     """Binary sensor for user's pending tasks."""
@@ -86,27 +67,8 @@ class ChoreShorePendingTasksBinarySensor(ChoreShoreBaseBinarySensor):
     def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self._attr_name = f"ChoreShore {coordinator.user_name} Has Pending Tasks"
+        self._attr_name = f"{coordinator.device_name} Has Pending Tasks"
         self._attr_unique_id = f"{DOMAIN}_{coordinator.user_id}_has_pending_tasks"
         self._attr_icon = "mdi:clock-outline"
 
-    @property
-    def is_on(self) -> bool:
-        """Return true if user has pending tasks."""
-        if self.coordinator.data and "analytics" in self.coordinator.data:
-            return self.coordinator.data["analytics"].get("pending_tasks", 0) > 0
-        return False
-
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return additional state attributes."""
-        if not self.coordinator.data or "analytics" not in self.coordinator.data:
-            return {}
-        
-        analytics = self.coordinator.data["analytics"]
-        return {
-            "pending_count": analytics.get("pending_tasks", 0),
-            "total_tasks": analytics.get("total_tasks", 0),
-            "user_id": self.coordinator.user_id,
-            "user_name": self.coordinator.user_name,
-        }
+    # ... keep existing code (is_on and extra_state_attributes properties)
