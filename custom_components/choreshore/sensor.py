@@ -43,7 +43,7 @@ async def async_setup_entry(
         for member in coordinator.data["members"]:
             entities.append(ChoreShoreMemberPerformanceSensor(coordinator, member))
     
-    _LOGGER.debug("Setting up %d ChoreShore sensor entities", len(entities))
+    _LOGGER.info("Setting up %d ChoreShore sensor entities", len(entities))
     async_add_entities(entities)
 
 class ChoreShoreBaseSensor(CoordinatorEntity, SensorEntity):
@@ -70,12 +70,14 @@ class ChoreShoreTotalTasksSensor(ChoreShoreBaseSensor):
     @property
     def native_value(self) -> Optional[int]:
         """Return the state of the sensor."""
-        if self.coordinator.data and "analytics" in self.coordinator.data:
-            value = self.coordinator.data["analytics"].get("total_tasks", 0)
-            _LOGGER.debug("Total tasks sensor value: %s", value)
-            return value
-        _LOGGER.debug("Total tasks sensor: no data available")
-        return 0
+        if not self.coordinator.data:
+            _LOGGER.debug("Total tasks sensor: no coordinator data")
+            return 0
+        
+        analytics = self.coordinator.data.get("analytics", {})
+        value = analytics.get("total_tasks", 0)
+        _LOGGER.debug("Total tasks sensor value: %s (from analytics: %s)", value, analytics)
+        return value
 
 class ChoreShoreCompletedTasksSensor(ChoreShoreBaseSensor):
     """Completed tasks sensor."""
@@ -88,12 +90,14 @@ class ChoreShoreCompletedTasksSensor(ChoreShoreBaseSensor):
     @property
     def native_value(self) -> Optional[int]:
         """Return the state of the sensor."""
-        if self.coordinator.data and "analytics" in self.coordinator.data:
-            value = self.coordinator.data["analytics"].get("completed_tasks", 0)
-            _LOGGER.debug("Completed tasks sensor value: %s", value)
-            return value
-        _LOGGER.debug("Completed tasks sensor: no data available")
-        return 0
+        if not self.coordinator.data:
+            _LOGGER.debug("Completed tasks sensor: no coordinator data")
+            return 0
+        
+        analytics = self.coordinator.data.get("analytics", {})
+        value = analytics.get("completed_tasks", 0)
+        _LOGGER.debug("Completed tasks sensor value: %s (from analytics: %s)", value, analytics)
+        return value
 
 class ChoreShoreOverdueTasksSensor(ChoreShoreBaseSensor):
     """Overdue tasks sensor."""
@@ -106,12 +110,14 @@ class ChoreShoreOverdueTasksSensor(ChoreShoreBaseSensor):
     @property
     def native_value(self) -> Optional[int]:
         """Return the state of the sensor."""
-        if self.coordinator.data and "analytics" in self.coordinator.data:
-            value = self.coordinator.data["analytics"].get("overdue_tasks", 0)
-            _LOGGER.debug("Overdue tasks sensor value: %s", value)
-            return value
-        _LOGGER.debug("Overdue tasks sensor: no data available")
-        return 0
+        if not self.coordinator.data:
+            _LOGGER.debug("Overdue tasks sensor: no coordinator data")
+            return 0
+        
+        analytics = self.coordinator.data.get("analytics", {})
+        value = analytics.get("overdue_tasks", 0)
+        _LOGGER.debug("Overdue tasks sensor value: %s (from analytics: %s)", value, analytics)
+        return value
 
 class ChoreShorePendingTasksSensor(ChoreShoreBaseSensor):
     """Pending tasks sensor."""
@@ -124,12 +130,14 @@ class ChoreShorePendingTasksSensor(ChoreShoreBaseSensor):
     @property
     def native_value(self) -> Optional[int]:
         """Return the state of the sensor."""
-        if self.coordinator.data and "analytics" in self.coordinator.data:
-            value = self.coordinator.data["analytics"].get("pending_tasks", 0)
-            _LOGGER.debug("Pending tasks sensor value: %s", value)
-            return value
-        _LOGGER.debug("Pending tasks sensor: no data available")
-        return 0
+        if not self.coordinator.data:
+            _LOGGER.debug("Pending tasks sensor: no coordinator data")
+            return 0
+        
+        analytics = self.coordinator.data.get("analytics", {})
+        value = analytics.get("pending_tasks", 0)
+        _LOGGER.debug("Pending tasks sensor value: %s (from analytics: %s)", value, analytics)
+        return value
 
 class ChoreShoreCompletionRateSensor(ChoreShoreBaseSensor):
     """Completion rate sensor."""
@@ -143,12 +151,14 @@ class ChoreShoreCompletionRateSensor(ChoreShoreBaseSensor):
     @property
     def native_value(self) -> Optional[float]:
         """Return the state of the sensor."""
-        if self.coordinator.data and "analytics" in self.coordinator.data:
-            value = self.coordinator.data["analytics"].get("completion_rate", 0)
-            _LOGGER.debug("Completion rate sensor value: %s", value)
-            return value
-        _LOGGER.debug("Completion rate sensor: no data available")
-        return 0
+        if not self.coordinator.data:
+            _LOGGER.debug("Completion rate sensor: no coordinator data")
+            return 0
+        
+        analytics = self.coordinator.data.get("analytics", {})
+        value = analytics.get("completion_rate", 0)
+        _LOGGER.debug("Completion rate sensor value: %s (from analytics: %s)", value, analytics)
+        return value
 
 class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
     """Member performance sensor."""
@@ -178,16 +188,18 @@ class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
     @property
     def native_value(self) -> Optional[int]:
         """Return the number of completed tasks for this member."""
-        if self.coordinator.data and "chore_instances" in self.coordinator.data:
-            member_tasks = [
-                task for task in self.coordinator.data["chore_instances"]
-                if task.get("assigned_to") == self._member_id and task.get("status") == "completed"
-            ]
-            value = len(member_tasks)
-            _LOGGER.debug("Member %s completed tasks: %s", self._member_name, value)
-            return value
-        _LOGGER.debug("Member %s tasks sensor: no data available", self._member_name)
-        return 0
+        if not self.coordinator.data or "chore_instances" not in self.coordinator.data:
+            _LOGGER.debug("Member %s tasks sensor: no coordinator data", self._member_name)
+            return 0
+
+        chore_instances = self.coordinator.data["chore_instances"]
+        member_tasks = [
+            task for task in chore_instances
+            if task.get("assigned_to") == self._member_id and task.get("status") == "completed"
+        ]
+        value = len(member_tasks)
+        _LOGGER.debug("Member %s completed tasks: %s", self._member_name, value)
+        return value
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
@@ -195,8 +207,9 @@ class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
         if not self.coordinator.data or "chore_instances" not in self.coordinator.data:
             return {}
 
+        chore_instances = self.coordinator.data["chore_instances"]
         member_tasks = [
-            task for task in self.coordinator.data["chore_instances"]
+            task for task in chore_instances
             if task.get("assigned_to") == self._member_id
         ]
         
@@ -211,7 +224,7 @@ class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
                 try:
                     due_date_str = task.get("due_date", "")
                     if isinstance(due_date_str, str):
-                        due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00')).date()
+                        due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
                     else:
                         due_date = due_date_str
                     
