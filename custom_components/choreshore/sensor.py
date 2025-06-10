@@ -1,3 +1,4 @@
+
 """ChoreShore sensor platform."""
 import logging
 from datetime import datetime
@@ -29,7 +30,7 @@ async def async_setup_entry(
     
     entities = []
     
-    # Analytics sensors
+    # Analytics sensors (household-level)
     entities.extend([
         ChoreShoreTotalTasksSensor(coordinator),
         ChoreShoreCompletedTasksSensor(coordinator),
@@ -38,7 +39,7 @@ async def async_setup_entry(
         ChoreShoreCompletionRateSensor(coordinator),
     ])
     
-    # Member performance sensors
+    # Member performance sensors (individual member stats)
     if coordinator.data and "members" in coordinator.data:
         for member in coordinator.data["members"]:
             entities.append(ChoreShoreMemberPerformanceSensor(coordinator, member))
@@ -168,12 +169,12 @@ class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"ChoreShore {self._member_name} Tasks"
+        return f"ChoreShore {self._member_name} Performance"
 
     @property
     def unique_id(self) -> str:
         """Return the unique ID of the sensor."""
-        return f"{DOMAIN}_member_{self._member_id}_tasks"
+        return f"{DOMAIN}_member_{self._member_id}_performance"
 
     @property
     def icon(self) -> str:
@@ -181,19 +182,25 @@ class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
         return "mdi:account-check"
 
     @property
-    def native_value(self) -> Optional[int]:
-        """Return the number of completed tasks for this member."""
+    def native_value(self) -> Optional[float]:
+        """Return the completion rate for this member."""
         if not self.coordinator.data or "chore_instances" not in self.coordinator.data:
             return 0
 
         chore_instances = self.coordinator.data["chore_instances"]
         member_tasks = [
             task for task in chore_instances
-            if task.get("assigned_to") == self._member_id and task.get("status") == "completed"
+            if task.get("assigned_to") == self._member_id
         ]
-        value = len(member_tasks)
-        _LOGGER.debug("Member %s completed tasks: %s", self._member_name, value)
-        return value
+        
+        if not member_tasks:
+            return 0
+        
+        completed = len([t for t in member_tasks if t.get("status") == "completed"])
+        completion_rate = round((completed / len(member_tasks) * 100), 1)
+        
+        _LOGGER.debug("Member %s completion rate: %s%%", self._member_name, completion_rate)
+        return completion_rate
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
