@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_URL, CONF_API_KEY
+from homeassistant.const import CONF_URL, CONF_API_KEY, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
@@ -27,6 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 STEP_USER_DATA_SCHEMA = vol.Schema({
     vol.Required(CONF_HOUSEHOLD_ID): str,
     vol.Required(CONF_USER_ID): str,
+    vol.Optional(CONF_NAME): str,
     vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): int,
 })
 
@@ -79,7 +80,9 @@ async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Dict[str,
         _LOGGER.error("Error connecting to ChoreShore: %s", err)
         raise CannotConnect from err
 
-    return {"title": f"ChoreShore - {user_name}"}
+    # Use provided device name or default to user name
+    device_name = data.get(CONF_NAME) or f"ChoreShore - {user_name}"
+    return {"title": device_name, "user_name": user_name}
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for ChoreShore."""
@@ -105,11 +108,58 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
+                # If no device name provided, use the auto-generated one
+                if not user_input.get(CONF_NAME):
+                    user_input[CONF_NAME] = info["title"]
+                
                 return self.async_create_entry(title=info["title"], data=user_input)
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
+
+    @staticmethod
+    @config_entries.callback
+    def async_get_options_flow(config_entry):
+        """Return the options flow."""
+        return OptionsFlowHandler(config_entry)
+
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options flow for ChoreShore."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: Optional[Dict[str, Any]] = None
+    ) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            # Update the config entry title if device name changed
+            if CONF_NAME in user_input and user_input[CONF_NAME] != self.config_entry.data.get(CONF_NAME):
+                new_data = dict(self.config_entry.data)
+                new_data[CONF_NAME] = user_input[CONF_NAME]
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry,
+                    data=new_data,
+                    title=user_input[CONF_NAME]
+                )
+            
+            return self.async_create_entry(title="", data=user_input)
+
+        options_schema = vol.Schema({
+            vol.Optional(
+                CONF_NAME,
+                default=self.config_entry.data.get(CONF_NAME, "")
+            ): str,
+            vol.Optional(
+                CONF_UPDATE_INTERVAL,
+                default=self.config_entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+            ): int,
+        })
+
+        return self.async_show_form(step_id="init", data_schema=options_schema)
 
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
