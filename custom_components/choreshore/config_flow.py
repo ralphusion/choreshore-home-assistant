@@ -34,13 +34,16 @@ async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Dict[str,
     """Validate the user input allows us to connect."""
     session = async_get_clientsession(hass)
     
-    # Test connection by fetching user profile
-    url = f"{API_BASE_URL}/rest/v1/rpc/get_user_profile"
-    test_data = {"user_id": data[CONF_USER_ID]}
+    # Test connection by fetching user profile directly from profiles table
+    url = f"{API_BASE_URL}/rest/v1/profiles"
+    params = {
+        "select": "*",
+        "id": f"eq.{data[CONF_USER_ID]}"
+    }
     
     try:
-        async with session.post(
-            url, headers=API_HEADERS, json=test_data, timeout=10
+        async with session.get(
+            url, headers=API_HEADERS, params=params, timeout=10
         ) as response:
             if response.status != 200:
                 raise InvalidAuth
