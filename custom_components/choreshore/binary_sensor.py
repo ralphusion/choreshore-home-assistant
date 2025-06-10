@@ -59,7 +59,26 @@ class ChoreShoreOverdueTasksBinarySensor(ChoreShoreBaseBinarySensor):
         self._attr_icon = "mdi:alert-circle"
         self._attr_device_class = BinarySensorDeviceClass.PROBLEM
 
-    # ... keep existing code (is_on and extra_state_attributes properties)
+    @property
+    def is_on(self) -> bool:
+        """Return true if user has overdue tasks."""
+        if self.coordinator.data and "analytics" in self.coordinator.data:
+            return self.coordinator.data["analytics"].get("overdue_tasks", 0) > 0
+        return False
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return additional state attributes."""
+        if not self.coordinator.data or "analytics" not in self.coordinator.data:
+            return {}
+        
+        analytics = self.coordinator.data["analytics"]
+        return {
+            "overdue_count": analytics.get("overdue_tasks", 0),
+            "total_tasks": analytics.get("total_tasks", 0),
+            "user_id": self.coordinator.user_id,
+            "user_name": self.coordinator.user_name,
+        }
 
 class ChoreShorePendingTasksBinarySensor(ChoreShoreBaseBinarySensor):
     """Binary sensor for user's pending tasks."""
@@ -71,4 +90,23 @@ class ChoreShorePendingTasksBinarySensor(ChoreShoreBaseBinarySensor):
         self._attr_unique_id = f"{DOMAIN}_{coordinator.user_id}_has_pending_tasks"
         self._attr_icon = "mdi:clock-outline"
 
-    # ... keep existing code (is_on and extra_state_attributes properties)
+    @property
+    def is_on(self) -> bool:
+        """Return true if user has pending tasks."""
+        if self.coordinator.data and "analytics" in self.coordinator.data:
+            return self.coordinator.data["analytics"].get("pending_tasks", 0) > 0
+        return False
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return additional state attributes."""
+        if not self.coordinator.data or "analytics" not in self.coordinator.data:
+            return {}
+        
+        analytics = self.coordinator.data["analytics"]
+        return {
+            "pending_count": analytics.get("pending_tasks", 0),
+            "total_tasks": analytics.get("total_tasks", 0),
+            "user_id": self.coordinator.user_id,
+            "user_name": self.coordinator.user_name,
+        }
