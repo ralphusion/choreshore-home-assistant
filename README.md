@@ -1,8 +1,7 @@
-
 # ChoreShore Home Assistant Integration
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
-[![GitHub Release](https://img.shields.io/github/release/ralphusion/choreshore-home-assistant.svg)](https://github.com/YOUR_USERNAME/choreshore-home-assistant/releases)
+[![GitHub Release](https://img.shields.io/github/release/ralphusion/choreshore-home-assistant.svg)](https://github.com/ralphusion/choreshore-home-assistant/releases)
 [![License](https://img.shields.io/github/license/ralphusion/choreshore-home-assistant.svg)](LICENSE)
 
 This custom integration brings ChoreShore household chore management into Home Assistant, allowing you to manage tasks, view analytics, and create automations within your smart home ecosystem.
@@ -15,6 +14,7 @@ This custom integration brings ChoreShore household chore management into Home A
 - **Member Performance**: Track individual household member statistics
 - **Analytics Dashboard**: Completion rates, streaks, and performance metrics
 - **Smart Automations**: Trigger automations based on task status and completion
+- **Secure Access**: Uses service-level authentication for reliable data access
 
 ### Entities Created
 - **Sensors**: Total tasks, completed tasks, overdue tasks, completion rate, member performance
@@ -77,6 +77,15 @@ choreshore:
 2. Go to your Profile page
 3. Scroll down to the "Developer & Integration Info" section
 4. Copy your User ID and Household ID from there
+
+## Authentication & Security
+
+The integration uses secure service-level authentication to access your ChoreShore data:
+
+- **Secure Access**: Uses service role authentication for reliable data retrieval
+- **Data Isolation**: Only your household's data is accessible based on your Household ID
+- **No Personal Credentials**: No need to store your personal login credentials in Home Assistant
+- **Automatic Updates**: Data refreshes automatically every 5 minutes (configurable)
 
 ## Repository Structure
 
@@ -212,13 +221,14 @@ automation:
 3. **Data Not Updating**: 
    - Use the `choreshore.refresh_data` service to manually refresh
    - Check network connectivity to ChoreShore servers
-   - Verify your credentials are still valid
+   - Verify your Household and User IDs are still valid
    - Check the update interval setting
 
 4. **Authentication Errors**:
    - Double-check your User ID and Household ID in ChoreShore profile
    - Ensure you're a member of the specified household
    - Try reconfiguring the integration through the UI
+   - The integration now uses service-level authentication, so personal login issues shouldn't affect it
 
 5. **HACS Installation Issues**:
    - Ensure HACS is properly installed and up to date
@@ -244,10 +254,11 @@ logger:
 ## Security & Privacy
 
 - All communication uses HTTPS encryption
-- Credentials are stored securely in Home Assistant's configuration
+- Service-level authentication ensures reliable access without storing personal credentials
 - Data is cached locally to minimize external API calls
 - The integration respects ChoreShore's role-based access control
-- Only necessary data is synchronized based on your access level
+- Only necessary data is synchronized based on your household access level
+- Data access is strictly limited to your configured household
 
 ## Contributing
 
@@ -286,4 +297,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 For the most up-to-date documentation and ChoreShore-specific configuration details, visit your ChoreShore profile page and check the "Developer & Integration Info" section.
-
