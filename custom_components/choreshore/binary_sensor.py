@@ -25,13 +25,14 @@ async def async_setup_entry(
     """Set up ChoreShore binary sensor platform."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
     
-    # Only create household-level binary sensors (no per-task redundancy)
+    # Create user-specific binary sensors
     entities = [
         ChoreShoreOverdueTasksBinarySensor(coordinator),
         ChoreShorePendingTasksBinarySensor(coordinator),
     ]
     
-    _LOGGER.info("Setting up %d ChoreShore binary sensor entities", len(entities))
+    _LOGGER.info("Setting up %d ChoreShore binary sensor entities for user %s", 
+                len(entities), coordinator.user_id)
     async_add_entities(entities)
 
 class ChoreShoreBaseBinarySensor(CoordinatorEntity, BinarySensorEntity):
@@ -41,23 +42,26 @@ class ChoreShoreBaseBinarySensor(CoordinatorEntity, BinarySensorEntity):
         """Initialize the binary sensor."""
         super().__init__(coordinator)
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.household_id)},
-            "name": "ChoreShore Household",
+            "identifiers": {(DOMAIN, f"{coordinator.household_id}_{coordinator.user_id}")},
+            "name": f"ChoreShore - {coordinator.user_name}",
             "manufacturer": "ChoreShore",
-            "model": "Household Management",
+            "model": "User Tasks",
         }
 
 class ChoreShoreOverdueTasksBinarySensor(ChoreShoreBaseBinarySensor):
-    """Binary sensor for overdue tasks."""
+    """Binary sensor for user's overdue tasks."""
 
-    _attr_name = "ChoreShore Has Overdue Tasks"
-    _attr_unique_id = f"{DOMAIN}_has_overdue_tasks"
-    _attr_icon = "mdi:alert-circle"
-    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_name = f"ChoreShore {coordinator.user_name} Has Overdue Tasks"
+        self._attr_unique_id = f"{DOMAIN}_{coordinator.user_id}_has_overdue_tasks"
+        self._attr_icon = "mdi:alert-circle"
+        self._attr_device_class = BinarySensorDeviceClass.PROBLEM
 
     @property
     def is_on(self) -> bool:
-        """Return true if there are overdue tasks."""
+        """Return true if user has overdue tasks."""
         if self.coordinator.data and "analytics" in self.coordinator.data:
             return self.coordinator.data["analytics"].get("overdue_tasks", 0) > 0
         return False
@@ -72,18 +76,23 @@ class ChoreShoreOverdueTasksBinarySensor(ChoreShoreBaseBinarySensor):
         return {
             "overdue_count": analytics.get("overdue_tasks", 0),
             "total_tasks": analytics.get("total_tasks", 0),
+            "user_id": self.coordinator.user_id,
+            "user_name": self.coordinator.user_name,
         }
 
 class ChoreShorePendingTasksBinarySensor(ChoreShoreBaseBinarySensor):
-    """Binary sensor for pending tasks."""
+    """Binary sensor for user's pending tasks."""
 
-    _attr_name = "ChoreShore Has Pending Tasks"
-    _attr_unique_id = f"{DOMAIN}_has_pending_tasks"
-    _attr_icon = "mdi:clock-outline"
+    def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_name = f"ChoreShore {coordinator.user_name} Has Pending Tasks"
+        self._attr_unique_id = f"{DOMAIN}_{coordinator.user_id}_has_pending_tasks"
+        self._attr_icon = "mdi:clock-outline"
 
     @property
     def is_on(self) -> bool:
-        """Return true if there are pending tasks."""
+        """Return true if user has pending tasks."""
         if self.coordinator.data and "analytics" in self.coordinator.data:
             return self.coordinator.data["analytics"].get("pending_tasks", 0) > 0
         return False
@@ -98,4 +107,6 @@ class ChoreShorePendingTasksBinarySensor(ChoreShoreBaseBinarySensor):
         return {
             "pending_count": analytics.get("pending_tasks", 0),
             "total_tasks": analytics.get("total_tasks", 0),
+            "user_id": self.coordinator.user_id,
+            "user_name": self.coordinator.user_name,
         }
