@@ -1,4 +1,3 @@
-
 """ChoreShore sensor platform."""
 import logging
 from datetime import datetime
@@ -44,6 +43,7 @@ async def async_setup_entry(
         for member in coordinator.data["members"]:
             entities.append(ChoreShoreMemberPerformanceSensor(coordinator, member))
     
+    _LOGGER.debug("Setting up %d ChoreShore sensor entities", len(entities))
     async_add_entities(entities)
 
 class ChoreShoreBaseSensor(CoordinatorEntity, SensorEntity):
@@ -71,7 +71,10 @@ class ChoreShoreTotalTasksSensor(ChoreShoreBaseSensor):
     def native_value(self) -> Optional[int]:
         """Return the state of the sensor."""
         if self.coordinator.data and "analytics" in self.coordinator.data:
-            return self.coordinator.data["analytics"].get("total_tasks", 0)
+            value = self.coordinator.data["analytics"].get("total_tasks", 0)
+            _LOGGER.debug("Total tasks sensor value: %s", value)
+            return value
+        _LOGGER.debug("Total tasks sensor: no data available")
         return 0
 
 class ChoreShoreCompletedTasksSensor(ChoreShoreBaseSensor):
@@ -86,7 +89,10 @@ class ChoreShoreCompletedTasksSensor(ChoreShoreBaseSensor):
     def native_value(self) -> Optional[int]:
         """Return the state of the sensor."""
         if self.coordinator.data and "analytics" in self.coordinator.data:
-            return self.coordinator.data["analytics"].get("completed_tasks", 0)
+            value = self.coordinator.data["analytics"].get("completed_tasks", 0)
+            _LOGGER.debug("Completed tasks sensor value: %s", value)
+            return value
+        _LOGGER.debug("Completed tasks sensor: no data available")
         return 0
 
 class ChoreShoreOverdueTasksSensor(ChoreShoreBaseSensor):
@@ -101,7 +107,10 @@ class ChoreShoreOverdueTasksSensor(ChoreShoreBaseSensor):
     def native_value(self) -> Optional[int]:
         """Return the state of the sensor."""
         if self.coordinator.data and "analytics" in self.coordinator.data:
-            return self.coordinator.data["analytics"].get("overdue_tasks", 0)
+            value = self.coordinator.data["analytics"].get("overdue_tasks", 0)
+            _LOGGER.debug("Overdue tasks sensor value: %s", value)
+            return value
+        _LOGGER.debug("Overdue tasks sensor: no data available")
         return 0
 
 class ChoreShorePendingTasksSensor(ChoreShoreBaseSensor):
@@ -116,7 +125,10 @@ class ChoreShorePendingTasksSensor(ChoreShoreBaseSensor):
     def native_value(self) -> Optional[int]:
         """Return the state of the sensor."""
         if self.coordinator.data and "analytics" in self.coordinator.data:
-            return self.coordinator.data["analytics"].get("pending_tasks", 0)
+            value = self.coordinator.data["analytics"].get("pending_tasks", 0)
+            _LOGGER.debug("Pending tasks sensor value: %s", value)
+            return value
+        _LOGGER.debug("Pending tasks sensor: no data available")
         return 0
 
 class ChoreShoreCompletionRateSensor(ChoreShoreBaseSensor):
@@ -132,7 +144,10 @@ class ChoreShoreCompletionRateSensor(ChoreShoreBaseSensor):
     def native_value(self) -> Optional[float]:
         """Return the state of the sensor."""
         if self.coordinator.data and "analytics" in self.coordinator.data:
-            return self.coordinator.data["analytics"].get("completion_rate", 0)
+            value = self.coordinator.data["analytics"].get("completion_rate", 0)
+            _LOGGER.debug("Completion rate sensor value: %s", value)
+            return value
+        _LOGGER.debug("Completion rate sensor: no data available")
         return 0
 
 class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
@@ -143,7 +158,7 @@ class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
         super().__init__(coordinator)
         self._member = member
         self._member_id = member["id"]
-        self._member_name = f"{member['first_name']} {member['last_name']}"
+        self._member_name = f"{member.get('first_name', 'Unknown')} {member.get('last_name', '')}"
 
     @property
     def name(self) -> str:
@@ -168,7 +183,10 @@ class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
                 task for task in self.coordinator.data["chore_instances"]
                 if task.get("assigned_to") == self._member_id and task.get("status") == "completed"
             ]
-            return len(member_tasks)
+            value = len(member_tasks)
+            _LOGGER.debug("Member %s completed tasks: %s", self._member_name, value)
+            return value
+        _LOGGER.debug("Member %s tasks sensor: no data available", self._member_name)
         return 0
 
     @property
@@ -184,10 +202,25 @@ class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
         
         completed = len([t for t in member_tasks if t.get("status") == "completed"])
         pending = len([t for t in member_tasks if t.get("status") == "pending"])
-        overdue = len([
-            t for t in member_tasks 
-            if t.get("status") == "pending" and t.get("due_date", "") < datetime.now().date().isoformat()
-        ])
+        
+        # Calculate overdue tasks for this member
+        overdue = 0
+        today = datetime.now().date()
+        for task in member_tasks:
+            if task.get("status") == "pending" and task.get("due_date"):
+                try:
+                    due_date_str = task.get("due_date", "")
+                    if isinstance(due_date_str, str):
+                        due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00')).date()
+                    else:
+                        due_date = due_date_str
+                    
+                    if due_date < today:
+                        overdue += 1
+                except (ValueError, AttributeError):
+                    pass
+        
+        completion_rate = round((completed / len(member_tasks) * 100) if member_tasks else 0, 1)
         
         return {
             "member_name": self._member_name,
@@ -196,5 +229,5 @@ class ChoreShoreMemberPerformanceSensor(ChoreShoreBaseSensor):
             "completed_tasks": completed,
             "pending_tasks": pending,
             "overdue_tasks": overdue,
-            "completion_rate": round((completed / len(member_tasks) * 100) if member_tasks else 0, 1),
+            "completion_rate": completion_rate,
         }
