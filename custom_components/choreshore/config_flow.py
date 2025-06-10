@@ -1,4 +1,3 @@
-
 """Config flow for ChoreShore integration."""
 import logging
 from typing import Any, Dict, Optional
@@ -35,15 +34,11 @@ async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Dict[str,
     session = async_get_clientsession(hass)
     
     # Test connection by fetching user profile directly from profiles table
-    url = f"{API_BASE_URL}/rest/v1/profiles"
-    params = {
-        "select": "*",
-        "id": f"eq.{data[CONF_USER_ID]}"
-    }
+    url = f"{API_BASE_URL}/rest/v1/profiles?id=eq.{data[CONF_USER_ID]}&select=*"
     
     try:
         async with session.get(
-            url, headers=API_HEADERS, params=params, timeout=10
+            url, headers=API_HEADERS, timeout=10
         ) as response:
             if response.status != 200:
                 raise InvalidAuth
