@@ -39,23 +39,20 @@ async def async_setup_entry(
         ChoreShoreCompletionRateSensor(coordinator),
     ])
     
-    # Chore status sensors (one per unique chore with pending instances)
+    # Non-redundant chore sensors (one per unique chore)
     if coordinator.data and "chore_instances" in coordinator.data:
-        chore_groups = {}
+        unique_chores = {}
         
-        # Group pending instances by chore_id
+        # Group all instances by chore_id to identify unique chores
         for task in coordinator.data["chore_instances"]:
-            if task.get("status") == TASK_STATUS_PENDING:
-                chore_id = task.get("chores", {}).get("id")
-                if chore_id:
-                    if chore_id not in chore_groups:
-                        chore_groups[chore_id] = []
-                    chore_groups[chore_id].append(task)
+            chore_data = task.get("chores", {})
+            chore_id = chore_data.get("id")
+            if chore_id and chore_id not in unique_chores:
+                unique_chores[chore_id] = chore_data
         
-        # Create one sensor per chore group
-        for chore_id, instances in chore_groups.items():
-            if instances:  # Only create sensor if there are pending instances
-                entities.append(ChoreShoreChoreStatusSensor(coordinator, chore_id, instances))
+        # Create one sensor per unique chore
+        for chore_id, chore_data in unique_chores.items():
+            entities.append(ChoreShoreUniqueChoreStatusSensor(coordinator, chore_id, chore_data))
     
     _LOGGER.info("Setting up %d ChoreShore sensor entities", len(entities))
     async_add_entities(entities)
@@ -169,34 +166,47 @@ class ChoreShoreCompletionRateSensor(ChoreShoreBaseSensor):
         _LOGGER.debug("Completion rate sensor returning: %s", value)
         return value
 
-class ChoreShoreChoreStatusSensor(ChoreShoreBaseSensor):
-    """Chore status sensor (one per unique chore)."""
+class ChoreShoreUniqueChoreStatusSensor(ChoreShoreBaseSensor):
+    """Non-redundant chore status sensor (one per unique chore, aggregating all instances)."""
 
-    def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator, chore_id: str, instances: List[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator, chore_id: str, chore_data: Dict[str, Any]) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._chore_id = chore_id
-        self._instances = instances
-        
-        # Use the first instance to get chore details
-        first_instance = instances[0] if instances else {}
-        chore_data = first_instance.get("chores", {})
+        self._chore_data = chore_data
         self._chore_name = chore_data.get("name", "Unknown Chore")
 
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"{self._chore_name} Tasks"
+        return f"ChoreShore {self._chore_name}"
 
     @property
     def unique_id(self) -> str:
         """Return the unique ID of the sensor."""
-        return f"{DOMAIN}_chore_{self._chore_id}_status"
+        return f"{DOMAIN}_chore_{self._chore_id}"
 
     @property
     def icon(self) -> str:
         """Return the icon of the sensor."""
-        return "mdi:clipboard-list"
+        # Get all current instances to determine status
+        instances = self._get_all_instances()
+        pending_count = len([i for i in instances if i.get("status") == "pending"])
+        completed_count = len([i for i in instances if i.get("status") == "completed"])
+        
+        if pending_count > 0:
+            # Check if any are overdue
+            today = datetime.now().date()
+            overdue = any(
+                datetime.strptime(i["due_date"], "%Y-%m-%d").date() < today 
+                for i in instances 
+                if i.get("status") == "pending"
+            )
+            return "mdi:alert-circle" if overdue else "mdi:clock-outline"
+        elif completed_count > 0:
+            return "mdi:check-circle"
+        else:
+            return "mdi:clipboard-list"
 
     @property
     def state_class(self) -> str:
@@ -205,92 +215,129 @@ class ChoreShoreChoreStatusSensor(ChoreShoreBaseSensor):
 
     @property
     def native_value(self) -> Optional[int]:
-        """Return the number of pending instances for this chore."""
-        current_instances = self._get_current_instances()
-        count = len(current_instances)
-        _LOGGER.debug("Chore %s has %d pending instances", self._chore_name, count)
+        """Return the total number of instances for this chore."""
+        instances = self._get_all_instances()
+        count = len(instances)
+        _LOGGER.debug("Chore %s has %d total instances", self._chore_name, count)
         return count
 
     @property
     def available(self) -> bool:
         """Return if the sensor is available."""
-        return len(self._get_current_instances()) > 0
+        return len(self._get_all_instances()) > 0
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return additional state attributes."""
-        current_instances = self._get_current_instances()
-        if not current_instances:
-            return {"chore_name": self._chore_name, "pending_instances": 0}
+        """Return comprehensive state attributes for this chore."""
+        instances = self._get_all_instances()
+        if not instances:
+            return {
+                "chore_name": self._chore_name,
+                "chore_id": self._chore_id,
+                "total_instances": 0,
+                "pending_instances": 0,
+                "completed_instances": 0,
+                "overdue_instances": 0,
+            }
 
-        # Get chore details from first instance
-        first_instance = current_instances[0]
-        chore = first_instance.get("chores", {})
+        # Categorize instances
+        pending_instances = [i for i in instances if i.get("status") == "pending"]
+        completed_instances = [i for i in instances if i.get("status") == "completed"]
+        skipped_instances = [i for i in instances if i.get("status") == "skipped"]
         
-        # Find earliest and most overdue dates
-        earliest_due = None
-        most_overdue = None
+        # Analyze dates
         today = datetime.now().date()
+        overdue_instances = []
+        upcoming_instances = []
+        
+        for instance in pending_instances:
+            try:
+                due_date = datetime.strptime(instance["due_date"], "%Y-%m-%d").date()
+                if due_date < today:
+                    overdue_instances.append(instance)
+                else:
+                    upcoming_instances.append(instance)
+            except (ValueError, KeyError):
+                pass
         
         # Get unique assigned members
         assigned_members = set()
-        overdue_count = 0
-        
-        for instance in current_instances:
-            # Assigned members
+        for instance in instances:
             assigned_user = instance.get("assigned_user", {})
             if assigned_user:
                 member_name = f"{assigned_user.get('first_name', '')} {assigned_user.get('last_name', '')}".strip()
                 if member_name:
                     assigned_members.add(member_name)
-            
-            # Due dates
-            due_date_str = instance.get("due_date")
-            if due_date_str:
-                try:
-                    if isinstance(due_date_str, str):
-                        due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
-                    else:
-                        due_date = due_date_str
-                    
-                    # Track earliest due date
-                    if earliest_due is None or due_date < earliest_due:
-                        earliest_due = due_date
-                    
-                    # Track overdue
-                    if due_date < today:
-                        overdue_count += 1
-                        if most_overdue is None or due_date < most_overdue:
-                            most_overdue = due_date
-                            
-                except (ValueError, AttributeError):
-                    pass
         
+        # Find date ranges
+        all_dates = []
+        for instance in instances:
+            try:
+                due_date = datetime.strptime(instance["due_date"], "%Y-%m-%d").date()
+                all_dates.append(due_date)
+            except (ValueError, KeyError):
+                pass
+        
+        earliest_date = min(all_dates) if all_dates else None
+        latest_date = max(all_dates) if all_dates else None
+        
+        # Find next due and most overdue
+        next_due_date = None
+        most_overdue_date = None
+        
+        if upcoming_instances:
+            upcoming_dates = []
+            for instance in upcoming_instances:
+                try:
+                    due_date = datetime.strptime(instance["due_date"], "%Y-%m-%d").date()
+                    upcoming_dates.append(due_date)
+                except (ValueError, KeyError):
+                    pass
+            next_due_date = min(upcoming_dates) if upcoming_dates else None
+        
+        if overdue_instances:
+            overdue_dates = []
+            for instance in overdue_instances:
+                try:
+                    due_date = datetime.strptime(instance["due_date"], "%Y-%m-%d").date()
+                    overdue_dates.append(due_date)
+                except (ValueError, KeyError):
+                    pass
+            most_overdue_date = min(overdue_dates) if overdue_dates else None
+
         return {
             "chore_name": self._chore_name,
             "chore_id": self._chore_id,
-            "pending_instances": len(current_instances),
-            "overdue_instances": overdue_count,
+            "total_instances": len(instances),
+            "pending_instances": len(pending_instances),
+            "completed_instances": len(completed_instances),
+            "skipped_instances": len(skipped_instances),
+            "overdue_instances": len(overdue_instances),
+            "upcoming_instances": len(upcoming_instances),
             "assigned_members": list(assigned_members),
-            "next_due_date": earliest_due.isoformat() if earliest_due else None,
-            "most_overdue_date": most_overdue.isoformat() if most_overdue else None,
-            "category": chore.get("category"),
-            "priority": chore.get("priority"),
-            "location": chore.get("location"),
-            "description": chore.get("description"),
-            "estimated_duration": chore.get("estimated_duration"),
+            "date_range": {
+                "earliest": earliest_date.isoformat() if earliest_date else None,
+                "latest": latest_date.isoformat() if latest_date else None,
+            },
+            "next_due_date": next_due_date.isoformat() if next_due_date else None,
+            "most_overdue_date": most_overdue_date.isoformat() if most_overdue_date else None,
+            "category": self._chore_data.get("category"),
+            "priority": self._chore_data.get("priority"),
+            "location": self._chore_data.get("location"),
+            "description": self._chore_data.get("description"),
+            "estimated_duration": self._chore_data.get("estimated_duration"),
+            "frequency_type": self._chore_data.get("frequency_type"),
         }
 
-    def _get_current_instances(self) -> List[Dict[str, Any]]:
-        """Get current pending instances for this chore from coordinator data."""
+    def _get_all_instances(self) -> List[Dict[str, Any]]:
+        """Get all instances for this chore from coordinator data."""
         if not self.coordinator.data or "chore_instances" not in self.coordinator.data:
             return []
         
-        current_instances = []
+        instances = []
         for task in self.coordinator.data["chore_instances"]:
             chore_data = task.get("chores", {})
-            if (chore_data.get("id") == self._chore_id and 
-                task.get("status") == TASK_STATUS_PENDING):
-                current_instances.append(task)
+            if chore_data.get("id") == self._chore_id:
+                instances.append(task)
         
-        return current_instances
+        return instances
