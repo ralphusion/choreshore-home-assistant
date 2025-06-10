@@ -25,11 +25,11 @@ async def async_setup_entry(
     
     entities = []
     
-    # Group pending tasks by chore and create one switch per unique chore
+    # Group pending tasks by chore for this specific user
     if coordinator.data and "chore_instances" in coordinator.data:
         chore_groups = {}
         
-        # Group instances by chore_id
+        # Group instances by chore_id (already filtered to this user's tasks)
         for task in coordinator.data["chore_instances"]:
             if task.get("status") == TASK_STATUS_PENDING:
                 chore_id = task.get("chores", {}).get("id")
@@ -38,16 +38,17 @@ async def async_setup_entry(
                         chore_groups[chore_id] = []
                     chore_groups[chore_id].append(task)
         
-        # Create one switch per chore group
+        # Create one switch per chore group for this user
         for chore_id, instances in chore_groups.items():
             if instances:  # Only create switch if there are pending instances
-                entities.append(ChoreShoreChoreSwitch(coordinator, chore_id, instances))
+                entities.append(ChoreShoreUserChoreSwitch(coordinator, chore_id, instances))
     
-    _LOGGER.info("Setting up %d ChoreShore chore switches", len(entities))
+    _LOGGER.info("Setting up %d ChoreShore chore switches for user %s", 
+                len(entities), coordinator.user_id)
     async_add_entities(entities)
 
-class ChoreShoreChoreSwitch(CoordinatorEntity, SwitchEntity):
-    """Switch entity for ChoreShore chores (grouped by chore type)."""
+class ChoreShoreUserChoreSwitch(CoordinatorEntity, SwitchEntity):
+    """Switch entity for ChoreShore chores (user-specific, grouped by chore type)."""
 
     def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator, chore_id: str, instances: List[Dict[str, Any]]) -> None:
         """Initialize the switch."""
@@ -61,21 +62,21 @@ class ChoreShoreChoreSwitch(CoordinatorEntity, SwitchEntity):
         self._chore_name = chore_data.get("name", "Unknown Chore")
         
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.household_id)},
-            "name": "ChoreShore Household",
+            "identifiers": {(DOMAIN, f"{coordinator.household_id}_{coordinator.user_id}")},
+            "name": f"ChoreShore - {coordinator.user_name}",
             "manufacturer": "ChoreShore",
-            "model": "Household Management",
+            "model": "User Tasks",
         }
 
     @property
     def name(self) -> str:
         """Return the name of the switch."""
-        return f"{self._chore_name}"
+        return f"{self.coordinator.user_name} {self._chore_name}"
 
     @property
     def unique_id(self) -> str:
         """Return the unique ID of the switch."""
-        return f"{DOMAIN}_chore_{self._chore_id}"
+        return f"{DOMAIN}_{self.coordinator.user_id}_chore_{self._chore_id}"
 
     @property
     def icon(self) -> str:
@@ -101,7 +102,12 @@ class ChoreShoreChoreSwitch(CoordinatorEntity, SwitchEntity):
         """Return additional state attributes."""
         current_instances = self._get_current_instances()
         if not current_instances:
-            return {"chore_name": self._chore_name, "pending_instances": 0}
+            return {
+                "chore_name": self._chore_name, 
+                "pending_instances": 0,
+                "user_id": self.coordinator.user_id,
+                "user_name": self.coordinator.user_name,
+            }
 
         # Get chore details from first instance
         first_instance = current_instances[0]
@@ -110,15 +116,6 @@ class ChoreShoreChoreSwitch(CoordinatorEntity, SwitchEntity):
         # Find most overdue instance
         most_overdue = self._get_most_overdue_instance(current_instances)
         most_overdue_date = most_overdue.get("due_date") if most_overdue else None
-        
-        # Get unique assigned members
-        assigned_members = set()
-        for instance in current_instances:
-            assigned_user = instance.get("assigned_user", {})
-            if assigned_user:
-                member_name = f"{assigned_user.get('first_name', '')} {assigned_user.get('last_name', '')}".strip()
-                if member_name:
-                    assigned_members.add(member_name)
         
         # Count overdue instances
         overdue_count = 0
@@ -140,10 +137,11 @@ class ChoreShoreChoreSwitch(CoordinatorEntity, SwitchEntity):
         return {
             "chore_name": self._chore_name,
             "chore_id": self._chore_id,
+            "user_id": self.coordinator.user_id,
+            "user_name": self.coordinator.user_name,
             "pending_instances": len(current_instances),
             "overdue_instances": overdue_count,
             "most_overdue_date": most_overdue_date,
-            "assigned_members": list(assigned_members),
             "category": chore.get("category"),
             "priority": chore.get("priority"),
             "location": chore.get("location"),
@@ -152,33 +150,37 @@ class ChoreShoreChoreSwitch(CoordinatorEntity, SwitchEntity):
         }
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Complete the most overdue instance of this chore."""
+        """Complete the most overdue instance of this chore for this user."""
         current_instances = self._get_current_instances()
         if not current_instances:
-            _LOGGER.warning("No pending instances found for chore %s", self._chore_name)
+            _LOGGER.warning("No pending instances found for chore %s for user %s", 
+                          self._chore_name, self.coordinator.user_id)
             return
         
         # Find the most overdue instance
         most_overdue = self._get_most_overdue_instance(current_instances)
         if not most_overdue:
-            _LOGGER.warning("Could not determine most overdue instance for chore %s", self._chore_name)
+            _LOGGER.warning("Could not determine most overdue instance for chore %s for user %s", 
+                          self._chore_name, self.coordinator.user_id)
             return
         
         task_id = most_overdue["id"]
-        _LOGGER.info("Completing most overdue instance %s for chore %s", task_id, self._chore_name)
+        _LOGGER.info("Completing most overdue instance %s for chore %s for user %s", 
+                    task_id, self._chore_name, self.coordinator.user_id)
         
         success = await self.coordinator.complete_task(task_id)
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to complete task %s for chore %s", task_id, self._chore_name)
+            _LOGGER.error("Failed to complete task %s for chore %s for user %s", 
+                         task_id, self._chore_name, self.coordinator.user_id)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off (not supported for chore completion)."""
         _LOGGER.warning("Cannot uncomplete a chore via switch")
 
     def _get_current_instances(self) -> List[Dict[str, Any]]:
-        """Get current pending instances for this chore from coordinator data."""
+        """Get current pending instances for this chore assigned to this user from coordinator data."""
         if not self.coordinator.data or "chore_instances" not in self.coordinator.data:
             return []
         
@@ -186,7 +188,8 @@ class ChoreShoreChoreSwitch(CoordinatorEntity, SwitchEntity):
         for task in self.coordinator.data["chore_instances"]:
             chore_data = task.get("chores", {})
             if (chore_data.get("id") == self._chore_id and 
-                task.get("status") == TASK_STATUS_PENDING):
+                task.get("status") == TASK_STATUS_PENDING and
+                task.get("assigned_to") == self.coordinator.user_id):
                 current_instances.append(task)
         
         return current_instances
