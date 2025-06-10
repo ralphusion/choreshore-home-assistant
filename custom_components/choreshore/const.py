@@ -21,7 +21,7 @@ SERVICE_REFRESH_DATA = "refresh_data"
 # API Endpoints
 API_BASE_URL = "https://axmqnnzezaewttahhwez.supabase.co"
 API_HEADERS = {
-    "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4bXFubnplemFld3R0YWhod2V6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0ODUwMDk3NywiZXhwIjoyMDY0MDc2OTc3fQ.4rQNlLEOifAr2hWV_vBfHWGm3q4VEv5dKLZkBZBl_p0",
+    "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4bXFubnplemFld3R0YWhod2V6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg1MDA5NzcsImV4cCI6MjA2NDA3Njk3N30.P5ag7QLzwc7kTOaXTvGYIZCW9_N3GE5jM5lHLBF5NaE",
     "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4bXFubnplemFld3R0YWhod2V6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0ODUwMDk3NywiZXhwIjoyMDY0MDc2OTc3fQ.4rQNlLEOifAr2hWV_vBfHWGm3q4VEv5dKLZkBZBl_p0",
     "Content-Type": "application/json",
 }
