@@ -1,3 +1,4 @@
+
 """Config flow for ChoreShore integration."""
 import logging
 from typing import Any, Dict, Optional
@@ -30,32 +31,55 @@ STEP_USER_DATA_SCHEMA = vol.Schema({
 })
 
 async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Dict[str, Any]:
-    """Validate the user input allows us to connect."""
+    """Validate the user input by calling the ha-analytics edge function."""
     session = async_get_clientsession(hass)
     
-    # Test connection by fetching user profile directly from profiles table
-    url = f"{API_BASE_URL}/rest/v1/profiles?id=eq.{data[CONF_USER_ID]}&select=*"
+    # Use the existing ha-analytics edge function for validation
+    url = f"{API_BASE_URL}/functions/v1/ha-analytics"
+    payload = {"household_id": data[CONF_HOUSEHOLD_ID]}
     
     try:
-        async with session.get(
-            url, headers=API_HEADERS, timeout=10
+        async with session.post(
+            url, 
+            headers=API_HEADERS, 
+            json=payload,
+            timeout=10
         ) as response:
             if response.status != 200:
+                _LOGGER.error("Edge function validation failed with status: %s", response.status)
                 raise InvalidAuth
             
-            profile_data = await response.json()
-            if not profile_data or len(profile_data) == 0:
+            result = await response.json()
+            
+            # Check if the response contains an error
+            if "error" in result:
+                _LOGGER.error("Edge function returned error: %s", result["error"])
                 raise InvalidAuth
-                
-            profile = profile_data[0]
-            if profile.get("household_id") != data[CONF_HOUSEHOLD_ID]:
+            
+            # Validate that we got meaningful data back
+            members = result.get("members", [])
+            if not members:
+                _LOGGER.error("No household members found")
                 raise InvalidHousehold
+            
+            # Check if the provided user_id is in the household members
+            user_found = False
+            user_name = "User"
+            for member in members:
+                if member.get("id") == data[CONF_USER_ID]:
+                    user_found = True
+                    user_name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip() or "User"
+                    break
+            
+            if not user_found:
+                _LOGGER.error("User ID %s not found in household members", data[CONF_USER_ID])
+                raise InvalidAuth
                 
     except aiohttp.ClientError as err:
         _LOGGER.error("Error connecting to ChoreShore: %s", err)
         raise CannotConnect from err
 
-    return {"title": f"ChoreShore - {profile.get('first_name', 'User')}"}
+    return {"title": f"ChoreShore - {user_name}"}
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for ChoreShore."""
