@@ -1,7 +1,8 @@
 
 """ChoreShore switch platform."""
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
+from datetime import datetime
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -24,23 +25,40 @@ async def async_setup_entry(
     
     entities = []
     
-    # Create switches for pending tasks
+    # Group pending tasks by chore and create one switch per unique chore
     if coordinator.data and "chore_instances" in coordinator.data:
+        chore_groups = {}
+        
+        # Group instances by chore_id
         for task in coordinator.data["chore_instances"]:
             if task.get("status") == TASK_STATUS_PENDING:
-                entities.append(ChoreShoreTaskSwitch(coordinator, task))
+                chore_id = task.get("chores", {}).get("id")
+                if chore_id:
+                    if chore_id not in chore_groups:
+                        chore_groups[chore_id] = []
+                    chore_groups[chore_id].append(task)
+        
+        # Create one switch per chore group
+        for chore_id, instances in chore_groups.items():
+            if instances:  # Only create switch if there are pending instances
+                entities.append(ChoreShoreChoreSwitch(coordinator, chore_id, instances))
     
+    _LOGGER.info("Setting up %d ChoreShore chore switches", len(entities))
     async_add_entities(entities)
 
-class ChoreShoreTaskSwitch(CoordinatorEntity, SwitchEntity):
-    """Switch entity for ChoreShore tasks."""
+class ChoreShoreChoreSwitch(CoordinatorEntity, SwitchEntity):
+    """Switch entity for ChoreShore chores (grouped by chore type)."""
 
-    def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator, task: Dict[str, Any]) -> None:
+    def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator, chore_id: str, instances: List[Dict[str, Any]]) -> None:
         """Initialize the switch."""
         super().__init__(coordinator)
-        self._task = task
-        self._task_id = task["id"]
-        self._chore_name = task.get("chores", {}).get("name", "Unknown Task")
+        self._chore_id = chore_id
+        self._instances = instances
+        
+        # Use the first instance to get chore details
+        first_instance = instances[0] if instances else {}
+        chore_data = first_instance.get("chores", {})
+        self._chore_name = chore_data.get("name", "Unknown Chore")
         
         self._attr_device_info = {
             "identifiers": {(DOMAIN, coordinator.household_id)},
@@ -52,12 +70,12 @@ class ChoreShoreTaskSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def name(self) -> str:
         """Return the name of the switch."""
-        return f"ChoreShore {self._chore_name} Complete"
+        return f"{self._chore_name}"
 
     @property
     def unique_id(self) -> str:
         """Return the unique ID of the switch."""
-        return f"{DOMAIN}_task_switch_{self._task_id}"
+        return f"{DOMAIN}_chore_{self._chore_id}"
 
     @property
     def icon(self) -> str:
@@ -66,62 +84,157 @@ class ChoreShoreTaskSwitch(CoordinatorEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        """Return true if the task is completed."""
-        current_task = self._get_current_task()
-        if not current_task:
-            return False
-        return current_task.get("status") == TASK_STATUS_COMPLETED
+        """Return true if any instance of this chore is completed (switch represents completion action)."""
+        # Switch is "off" when there are pending instances (ready to complete)
+        # Switch is "on" momentarily during completion, then refreshes to off if more instances exist
+        current_instances = self._get_current_instances()
+        return len(current_instances) == 0  # No pending instances = all completed
 
     @property
     def available(self) -> bool:
         """Return if the switch is available."""
-        current_task = self._get_current_task()
-        if not current_task:
-            return False
-        # Only allow switching if task is pending or completed
-        return current_task.get("status") in [TASK_STATUS_PENDING, TASK_STATUS_COMPLETED]
+        current_instances = self._get_current_instances()
+        return len(current_instances) > 0  # Available if there are pending instances
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional state attributes."""
-        current_task = self._get_current_task()
-        if not current_task:
-            return {}
+        current_instances = self._get_current_instances()
+        if not current_instances:
+            return {"chore_name": self._chore_name, "pending_instances": 0}
 
-        chore = current_task.get("chores", {})
-        assigned_user = current_task.get("assigned_user", {})
+        # Get chore details from first instance
+        first_instance = current_instances[0]
+        chore = first_instance.get("chores", {})
+        
+        # Find most overdue instance
+        most_overdue = self._get_most_overdue_instance(current_instances)
+        most_overdue_date = most_overdue.get("due_date") if most_overdue else None
+        
+        # Get unique assigned members
+        assigned_members = set()
+        for instance in current_instances:
+            assigned_user = instance.get("assigned_user", {})
+            if assigned_user:
+                member_name = f"{assigned_user.get('first_name', '')} {assigned_user.get('last_name', '')}".strip()
+                if member_name:
+                    assigned_members.add(member_name)
+        
+        # Count overdue instances
+        overdue_count = 0
+        today = datetime.now().date()
+        for instance in current_instances:
+            if instance.get("due_date"):
+                try:
+                    due_date_str = instance.get("due_date", "")
+                    if isinstance(due_date_str, str):
+                        due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
+                    else:
+                        due_date = due_date_str
+                    
+                    if due_date < today:
+                        overdue_count += 1
+                except (ValueError, AttributeError):
+                    pass
         
         return {
-            "task_id": current_task["id"],
-            "chore_name": chore.get("name"),
-            "description": chore.get("description"),
+            "chore_name": self._chore_name,
+            "chore_id": self._chore_id,
+            "pending_instances": len(current_instances),
+            "overdue_instances": overdue_count,
+            "most_overdue_date": most_overdue_date,
+            "assigned_members": list(assigned_members),
             "category": chore.get("category"),
             "priority": chore.get("priority"),
             "location": chore.get("location"),
-            "due_date": current_task.get("due_date"),
-            "due_time": current_task.get("due_time"),
-            "assigned_to": f"{assigned_user.get('first_name', '')} {assigned_user.get('last_name', '')}".strip(),
-            "status": current_task.get("status"),
+            "description": chore.get("description"),
+            "estimated_duration": chore.get("estimated_duration"),
         }
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the switch on (complete the task)."""
-        success = await self.coordinator.complete_task(self._task_id)
+        """Complete the most overdue instance of this chore."""
+        current_instances = self._get_current_instances()
+        if not current_instances:
+            _LOGGER.warning("No pending instances found for chore %s", self._chore_name)
+            return
+        
+        # Find the most overdue instance
+        most_overdue = self._get_most_overdue_instance(current_instances)
+        if not most_overdue:
+            _LOGGER.warning("Could not determine most overdue instance for chore %s", self._chore_name)
+            return
+        
+        task_id = most_overdue["id"]
+        _LOGGER.info("Completing most overdue instance %s for chore %s", task_id, self._chore_name)
+        
+        success = await self.coordinator.complete_task(task_id)
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to complete task %s", self._task_id)
+            _LOGGER.error("Failed to complete task %s for chore %s", task_id, self._chore_name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the switch off (not supported for task completion)."""
-        _LOGGER.warning("Cannot uncomplete a task via switch")
+        """Turn the switch off (not supported for chore completion)."""
+        _LOGGER.warning("Cannot uncomplete a chore via switch")
 
-    def _get_current_task(self) -> Optional[Dict[str, Any]]:
-        """Get the current task data from coordinator."""
+    def _get_current_instances(self) -> List[Dict[str, Any]]:
+        """Get current pending instances for this chore from coordinator data."""
         if not self.coordinator.data or "chore_instances" not in self.coordinator.data:
+            return []
+        
+        current_instances = []
+        for task in self.coordinator.data["chore_instances"]:
+            chore_data = task.get("chores", {})
+            if (chore_data.get("id") == self._chore_id and 
+                task.get("status") == TASK_STATUS_PENDING):
+                current_instances.append(task)
+        
+        return current_instances
+
+    def _get_most_overdue_instance(self, instances: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Find the most overdue instance from a list of instances."""
+        if not instances:
             return None
         
-        for task in self.coordinator.data["chore_instances"]:
-            if task["id"] == self._task_id:
-                return task
-        return None
+        today = datetime.now().date()
+        overdue_instances = []
+        future_instances = []
+        
+        for instance in instances:
+            due_date_str = instance.get("due_date")
+            if not due_date_str:
+                future_instances.append(instance)
+                continue
+                
+            try:
+                if isinstance(due_date_str, str):
+                    due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
+                else:
+                    due_date = due_date_str
+                
+                if due_date < today:
+                    overdue_instances.append((instance, due_date))
+                else:
+                    future_instances.append((instance, due_date))
+            except (ValueError, AttributeError):
+                future_instances.append(instance)
+        
+        # Return most overdue instance (earliest due date)
+        if overdue_instances:
+            overdue_instances.sort(key=lambda x: x[1])
+            return overdue_instances[0][0]
+        
+        # If no overdue, return earliest future instance
+        if future_instances:
+            # Handle instances without dates
+            with_dates = [(inst, date) for inst, date in future_instances if not isinstance(inst, dict)]
+            without_dates = [inst for inst in future_instances if isinstance(inst, dict)]
+            
+            if with_dates:
+                with_dates.sort(key=lambda x: x[1])
+                return with_dates[0][0]
+            elif without_dates:
+                return without_dates[0]
+        
+        # Fallback to first instance
+        return instances[0]
