@@ -30,7 +30,7 @@ async def async_setup_entry(
     
     entities = []
     
-    # Analytics sensors (household-level)
+    # User-specific analytics sensors
     entities.extend([
         ChoreShoreTotalTasksSensor(coordinator),
         ChoreShoreCompletedTasksSensor(coordinator),
@@ -39,22 +39,23 @@ async def async_setup_entry(
         ChoreShoreCompletionRateSensor(coordinator),
     ])
     
-    # Non-redundant chore sensors (one per unique chore)
+    # User-specific chore sensors (one per unique chore assigned to this user)
     if coordinator.data and "chore_instances" in coordinator.data:
         unique_chores = {}
         
-        # Group all instances by chore_id to identify unique chores
+        # Group user's instances by chore_id to identify unique chores
         for task in coordinator.data["chore_instances"]:
             chore_data = task.get("chores", {})
             chore_id = chore_data.get("id")
             if chore_id and chore_id not in unique_chores:
                 unique_chores[chore_id] = chore_data
         
-        # Create one sensor per unique chore
+        # Create one sensor per unique chore assigned to this user
         for chore_id, chore_data in unique_chores.items():
-            entities.append(ChoreShoreUniqueChoreStatusSensor(coordinator, chore_id, chore_data))
+            entities.append(ChoreShoreUserChoreStatusSensor(coordinator, chore_id, chore_data))
     
-    _LOGGER.info("Setting up %d ChoreShore sensor entities", len(entities))
+    _LOGGER.info("Setting up %d ChoreShore sensor entities for user %s", 
+                len(entities), coordinator.user_id)
     async_add_entities(entities)
 
 class ChoreShoreBaseSensor(CoordinatorEntity, SensorEntity):
@@ -64,19 +65,22 @@ class ChoreShoreBaseSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.household_id)},
-            "name": "ChoreShore Household",
+            "identifiers": {(DOMAIN, f"{coordinator.household_id}_{coordinator.user_id}")},
+            "name": f"ChoreShore - {coordinator.user_name}",
             "manufacturer": "ChoreShore",
-            "model": "Household Management",
+            "model": "User Tasks",
         }
 
 class ChoreShoreTotalTasksSensor(ChoreShoreBaseSensor):
-    """Total tasks sensor."""
+    """Total tasks sensor for user."""
 
-    _attr_name = "ChoreShore Total Tasks"
-    _attr_unique_id = f"{DOMAIN}_total_tasks"
-    _attr_icon = "mdi:format-list-checks"
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_name = f"ChoreShore {coordinator.user_name} Total Tasks"
+        self._attr_unique_id = f"{DOMAIN}_{coordinator.user_id}_total_tasks"
+        self._attr_icon = "mdi:format-list-checks"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
     def native_value(self) -> Optional[int]:
@@ -86,16 +90,18 @@ class ChoreShoreTotalTasksSensor(ChoreShoreBaseSensor):
         
         analytics = self.coordinator.data.get("analytics", {})
         value = analytics.get("total_tasks", 0)
-        _LOGGER.debug("Total tasks sensor returning: %s", value)
         return value
 
 class ChoreShoreCompletedTasksSensor(ChoreShoreBaseSensor):
-    """Completed tasks sensor."""
+    """Completed tasks sensor for user."""
 
-    _attr_name = "ChoreShore Completed Tasks"
-    _attr_unique_id = f"{DOMAIN}_completed_tasks"
-    _attr_icon = "mdi:check-circle"
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_name = f"ChoreShore {coordinator.user_name} Completed Tasks"
+        self._attr_unique_id = f"{DOMAIN}_{coordinator.user_id}_completed_tasks"
+        self._attr_icon = "mdi:check-circle"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
     def native_value(self) -> Optional[int]:
@@ -105,16 +111,18 @@ class ChoreShoreCompletedTasksSensor(ChoreShoreBaseSensor):
         
         analytics = self.coordinator.data.get("analytics", {})
         value = analytics.get("completed_tasks", 0)
-        _LOGGER.debug("Completed tasks sensor returning: %s", value)
         return value
 
 class ChoreShoreOverdueTasksSensor(ChoreShoreBaseSensor):
-    """Overdue tasks sensor."""
+    """Overdue tasks sensor for user."""
 
-    _attr_name = "ChoreShore Overdue Tasks"
-    _attr_unique_id = f"{DOMAIN}_overdue_tasks"
-    _attr_icon = "mdi:alert-circle"
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_name = f"ChoreShore {coordinator.user_name} Overdue Tasks"
+        self._attr_unique_id = f"{DOMAIN}_{coordinator.user_id}_overdue_tasks"
+        self._attr_icon = "mdi:alert-circle"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
     def native_value(self) -> Optional[int]:
@@ -124,16 +132,18 @@ class ChoreShoreOverdueTasksSensor(ChoreShoreBaseSensor):
         
         analytics = self.coordinator.data.get("analytics", {})
         value = analytics.get("overdue_tasks", 0)
-        _LOGGER.debug("Overdue tasks sensor returning: %s", value)
         return value
 
 class ChoreShorePendingTasksSensor(ChoreShoreBaseSensor):
-    """Pending tasks sensor."""
+    """Pending tasks sensor for user."""
 
-    _attr_name = "ChoreShore Pending Tasks"
-    _attr_unique_id = f"{DOMAIN}_pending_tasks"
-    _attr_icon = "mdi:clock-outline"
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_name = f"ChoreShore {coordinator.user_name} Pending Tasks"
+        self._attr_unique_id = f"{DOMAIN}_{coordinator.user_id}_pending_tasks"
+        self._attr_icon = "mdi:clock-outline"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
     def native_value(self) -> Optional[int]:
@@ -143,17 +153,19 @@ class ChoreShorePendingTasksSensor(ChoreShoreBaseSensor):
         
         analytics = self.coordinator.data.get("analytics", {})
         value = analytics.get("pending_tasks", 0)
-        _LOGGER.debug("Pending tasks sensor returning: %s", value)
         return value
 
 class ChoreShoreCompletionRateSensor(ChoreShoreBaseSensor):
-    """Completion rate sensor."""
+    """Completion rate sensor for user."""
 
-    _attr_name = "ChoreShore Completion Rate"
-    _attr_unique_id = f"{DOMAIN}_completion_rate"
-    _attr_icon = "mdi:percent"
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = "%"
+    def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_name = f"ChoreShore {coordinator.user_name} Completion Rate"
+        self._attr_unique_id = f"{DOMAIN}_{coordinator.user_id}_completion_rate"
+        self._attr_icon = "mdi:percent"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = "%"
 
     @property
     def native_value(self) -> Optional[float]:
@@ -163,11 +175,10 @@ class ChoreShoreCompletionRateSensor(ChoreShoreBaseSensor):
         
         analytics = self.coordinator.data.get("analytics", {})
         value = analytics.get("completion_rate", 0)
-        _LOGGER.debug("Completion rate sensor returning: %s", value)
         return value
 
-class ChoreShoreUniqueChoreStatusSensor(ChoreShoreBaseSensor):
-    """Non-redundant chore status sensor (one per unique chore, aggregating all instances)."""
+class ChoreShoreUserChoreStatusSensor(ChoreShoreBaseSensor):
+    """User-specific chore status sensor (one per unique chore assigned to user)."""
 
     def __init__(self, coordinator: ChoreShoreDateUpdateCoordinator, chore_id: str, chore_data: Dict[str, Any]) -> None:
         """Initialize the sensor."""
@@ -179,18 +190,18 @@ class ChoreShoreUniqueChoreStatusSensor(ChoreShoreBaseSensor):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"ChoreShore {self._chore_name}"
+        return f"ChoreShore {self.coordinator.user_name} {self._chore_name}"
 
     @property
     def unique_id(self) -> str:
         """Return the unique ID of the sensor."""
-        return f"{DOMAIN}_chore_{self._chore_id}"
+        return f"{DOMAIN}_{self.coordinator.user_id}_chore_{self._chore_id}"
 
     @property
     def icon(self) -> str:
         """Return the icon of the sensor."""
-        # Get all current instances to determine status
-        instances = self._get_all_instances()
+        # Get user's instances to determine status
+        instances = self._get_user_instances()
         pending_count = len([i for i in instances if i.get("status") == "pending"])
         completed_count = len([i for i in instances if i.get("status") == "completed"])
         
@@ -215,25 +226,26 @@ class ChoreShoreUniqueChoreStatusSensor(ChoreShoreBaseSensor):
 
     @property
     def native_value(self) -> Optional[int]:
-        """Return the total number of instances for this chore."""
-        instances = self._get_all_instances()
+        """Return the total number of instances for this chore assigned to this user."""
+        instances = self._get_user_instances()
         count = len(instances)
-        _LOGGER.debug("Chore %s has %d total instances", self._chore_name, count)
         return count
 
     @property
     def available(self) -> bool:
         """Return if the sensor is available."""
-        return len(self._get_all_instances()) > 0
+        return len(self._get_user_instances()) > 0
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return comprehensive state attributes for this chore."""
-        instances = self._get_all_instances()
+        """Return comprehensive state attributes for this user's chore instances."""
+        instances = self._get_user_instances()
         if not instances:
             return {
                 "chore_name": self._chore_name,
                 "chore_id": self._chore_id,
+                "user_id": self.coordinator.user_id,
+                "user_name": self.coordinator.user_name,
                 "total_instances": 0,
                 "pending_instances": 0,
                 "completed_instances": 0,
@@ -259,15 +271,6 @@ class ChoreShoreUniqueChoreStatusSensor(ChoreShoreBaseSensor):
                     upcoming_instances.append(instance)
             except (ValueError, KeyError):
                 pass
-        
-        # Get unique assigned members
-        assigned_members = set()
-        for instance in instances:
-            assigned_user = instance.get("assigned_user", {})
-            if assigned_user:
-                member_name = f"{assigned_user.get('first_name', '')} {assigned_user.get('last_name', '')}".strip()
-                if member_name:
-                    assigned_members.add(member_name)
         
         # Find date ranges
         all_dates = []
@@ -308,13 +311,14 @@ class ChoreShoreUniqueChoreStatusSensor(ChoreShoreBaseSensor):
         return {
             "chore_name": self._chore_name,
             "chore_id": self._chore_id,
+            "user_id": self.coordinator.user_id,
+            "user_name": self.coordinator.user_name,
             "total_instances": len(instances),
             "pending_instances": len(pending_instances),
             "completed_instances": len(completed_instances),
             "skipped_instances": len(skipped_instances),
             "overdue_instances": len(overdue_instances),
             "upcoming_instances": len(upcoming_instances),
-            "assigned_members": list(assigned_members),
             "date_range": {
                 "earliest": earliest_date.isoformat() if earliest_date else None,
                 "latest": latest_date.isoformat() if latest_date else None,
@@ -329,15 +333,16 @@ class ChoreShoreUniqueChoreStatusSensor(ChoreShoreBaseSensor):
             "frequency_type": self._chore_data.get("frequency_type"),
         }
 
-    def _get_all_instances(self) -> List[Dict[str, Any]]:
-        """Get all instances for this chore from coordinator data."""
+    def _get_user_instances(self) -> List[Dict[str, Any]]:
+        """Get all instances for this chore assigned to this user from coordinator data."""
         if not self.coordinator.data or "chore_instances" not in self.coordinator.data:
             return []
         
         instances = []
         for task in self.coordinator.data["chore_instances"]:
             chore_data = task.get("chores", {})
-            if chore_data.get("id") == self._chore_id:
+            if (chore_data.get("id") == self._chore_id and 
+                task.get("assigned_to") == self.coordinator.user_id):
                 instances.append(task)
         
         return instances
